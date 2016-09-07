@@ -852,7 +852,6 @@ class ControllerDispatcher
         (!empty($options['except']) && in_array($method, (array)$options['except']));
     }
 }
-
 ```
 
 在 `dispatch` 方法中增加一行 `var_dump($controller);` ，刷新就可以看到页面上输出 `string(35) "App\Http\Controllers\HomeController"` ，这就是要调用的控制器类的“绝对类名”。
@@ -868,4 +867,264 @@ Laravel 使用了完整的面向对象程序架构，对控制器的调用进行
 ## 搭建前台
 
 ### 修改路由
+
+`routes/web.php`
+
+```php
+Route::get('/', 'HomeController@index');
+```
+
+现在系统首页落到 `App\Http\Controllers\HomeController` 类的 `index` 方法上了。
+
+### 查看 HomeController 的 index 函数
+
+`app/Http/Controllers/HomeController.php`
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+
+class HomeController extends Controller
+{
+    /**
+     * 创建一个控制器实例
+     *
+     * @return void
+     */
+    public function __construct()
+    {
+        $this->middleware('auth');
+    }
+
+    /**
+     * 返回 home 视图
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function index()
+    {
+        return view('home');
+    }
+}
+```
+
+### blade 浅析
+
+blade 会对视图文件进行预处理，简化一些重复性很高的 echo 、 foreach 等 PHP 代码。 blade 还提供了一个灵活强大的视图组织系统。
+
+`resources/views/home.blade.php`
+
+```php
+@extends('layouts.app')
+
+@section('content')
+<div class="container">
+    <div class="row">
+        <div class="col-md-8 col-md-offset-2">
+            <div class="panel panel-default">
+                <div class="panel-heading">Dashboard</div>
+
+                <div class="panel-body">
+                    You are logged in!
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection
+```
+
+`@extends('layouts.app')` 
+
+表示此视图的基视图是 `resources/views/layouts/app.blade.php` 。在使用名称查找视图的时候，可以使用 `.` 代替 `/` 或者 `\` 。
+
+`@section('content') ... @endsection` 
+
+这两个标识符之前的代码，会被放到基视图的 `@yield('content')` 中进行输出。
+
+### 访问首页
+
+会看到登录页面，因为 `HomeController` 构造函数中加入了中间件处理。
+
+这个函数会在控制器类初始化的时候自动载入一个名为 `auth` 的中间件，正是这一步导致了首页需要登录认证。
+
+### 向视图文件输出数据
+
+既然 Controller - View 架构已经运行，下一步就是引入 Model 了。
+
+Laravel 中向视图传递数据非常简单：
+
+```php
+public function index()
+{
+  return view('home')->withArticles(\App\Article::all());
+}
+```
+
+### 修改视图文件
+
+`resources/views/home.blade.php`
+
+```php
+@extends('layouts.app')
+
+@section('content')
+    <div class="container">
+        <div id="title" style="text-align: center;">
+            <h1>Learn Laravel 5</h1>
+            <div style="padding: 5px; font-size: 16px;">Learn Laravel 5</div>
+        </div>
+        <hr>
+        <ul>
+            @foreach($articles as $article)
+                <li style="margin: 50px 0;">
+                    <div class="title">
+                        <a href="{{url('article/'.$article->id)}}"><h4>{{$article->title}}</h4></a>
+                    </div>
+                    <div class="body">
+                        <p>{{$article->body}}</p>
+                    </div>
+                </li>
+            @endforeach
+        </ul>
+    </div>
+@endsection
+```
+
+### 调整视图
+
+修改基视图 `resources/views/layouts/app.blade.php`
+
+```php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Laravel</title>
+
+    <link href="//cdn.bootcss.com/bootstrap/3.2.0/css/bootstrap.min.css" rel="stylesheet">
+    <script src="//cdn.bootcss.com/jquery/1.11.1/jquery.min.js"></script>
+    <script src="//cdn.bootcss.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+</head>
+<body id="app-layout">
+<nav class="navbar navbar-default navbar-static-top">
+    <div class="container">
+        <div class="navbar-header">
+
+            <!-- Collapsed Hamburger -->
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse"
+                    data-target="#app-navbar-collapse">
+                <span class="sr-only">Toggle Navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+
+            <!-- Branding Image -->
+            <a class="navbar-brand" href="{{ url('/') }}">
+                Laravel
+            </a>
+        </div>
+
+        <div class="collapse navbar-collapse" id="app-navbar-collapse">
+            <!-- Left Side Of Navbar -->
+            <ul class="nav navbar-nav">
+                <li><a href="{{ url('/home') }}">Home</a></li>
+            </ul>
+
+            <!-- Right Side Of Navbar -->
+            <ul class="nav navbar-nav navbar-right">
+                <!-- Authentication Links -->
+                @if (Auth::guest())
+                    <li><a href="{{ url('/login') }}">Login</a></li>
+                    <li><a href="{{ url('/register') }}">Register</a></li>
+                @else
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">
+                            {{ Auth::user()->name }} <span class="caret"></span>
+                        </a>
+
+                        <ul class="dropdown-menu" role="menu">
+                            <li><a href="{{ url('/logout') }}"><i class="fa fa-btn fa-sign-out"></i>Logout</a></li>
+                        </ul>
+                    </li>
+                @endif
+            </ul>
+        </div>
+    </div>
+</nav>
+
+@yield('content')
+
+</body>
+</html>
+```
+
+## 搭建后台
+
+### 构建 Article 详情页
+
+#### 生成控制器
+
+使用 Artisan 工具生成控制器文件
+
+`php artisan make::controller Admin/HomeController`
+
+`app/Http/Controllers/Admin/HomeController.php`
+
+```php
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+
+class HomeController extends Controller
+{
+    public function index()
+    {
+        return view('admin/home');
+    }
+}
+```
+
+#### 增加路由
+
+要使用路由组将后台页面至于“需要登录才能访问”的中间件下，保证安全：
+
+`routes/web.php`
+
+```php
+Route::group(['middleware' => 'auth', 'namespace' => 'Admin', 'prefix' => 'admin'], function () {
+    Route::get('/', 'HomeController@index');
+});
+```
+
+路由组可以给组内路由一次性增加 命名空间、 uri 前缀、域名限定、中间件等属性，并且可以多级嵌套，非常强大。
+
+> 路由组文档参见：[路由群组](http://laravel-china.org/docs/5.2/routing#route-groups)
+
+此路由组的功能是：访问这个页面必须先登录，如果已经登录，将 http://locahost 指向 `HomeController` 的 `index` 方法。其中，需要登录由 `middleware` 定义， `/admin` 由 `prefix` 定义， `Admin` 由 `namespace` 定义， `HomeController` 是实际的类名。
+
+### 构建后台首页
+
+#### 新建 index 方法
+
+#### 新建视图文件
+
+#### 修改 Auth 系统登录成功之后的跳转路径
+
+### 构建 Article 后台管理功能
+
+#### 添加路由
+
+#### 新建控制器
+
+#### 新建视图
 
