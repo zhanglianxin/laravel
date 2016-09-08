@@ -80,10 +80,12 @@ class ArticleController extends Controller
         $article = Article::find($id);
 
         // 将数据从数据库中删除，通过判断删除结果，控制页面进行不同跳转
+        $msg = '';
         if ($article->delete()) {
-            return redirect()->back()->withInput()->withErrors('删除成功');
+            $msg = '删除成功';
         } else {
-            return redirect()->back()->withInput()->withErrors('删除失败');
+            $msg = '删除失败';
         }
+        return redirect()->back()->withInput()->withErrors($msg);
     }
 }

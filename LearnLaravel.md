@@ -1116,15 +1116,368 @@ Route::group(['middleware' => 'auth', 'namespace' => 'Admin', 'prefix' => 'admin
 
 #### 新建 index 方法
 
+`app/Http/Controllers/Admin/HomeController.php`
+
+```php
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+
+class HomeController extends Controller
+{
+    public function index()
+    {
+        return view('admin/home');
+    }
+}
+```
+
 #### 新建视图文件
 
+`resources/views/admin/home.blade.php`
+
+```php
+@extends('layouts.app')
+
+@section('content')
+    <div class="container">
+        <div class="row">
+            <div class="col-md-10 col-md-offset-1">
+                <div class="panel panel-default">
+                    <div class="panel-heading">Dashboard</div>
+                    <div class="panel-body">
+                        <a href="{{url('admin/article')}}" class="btn btn-lg btn-success col-xs-12">管理文章</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+```
+
 #### 修改 Auth 系统登录成功之后的跳转路径
+
+`app/Http/Controllers/Auth/AuthController.php`
+
+```php
+<?php
+
+namespace App\Http\Controllers\Auth;
+
+use App\User;
+use Validator;
+use App\Http\Controllers\Controller;
+use Illuminate\Foundation\Auth\ThrottlesLogins;
+use Illuminate\Foundation\Auth\AuthenticatesAndRegistersUsers;
+
+class AuthController extends Controller
+{
+    /*
+    |--------------------------------------------------------------------------
+    | 注册和登录控制器
+    |--------------------------------------------------------------------------
+    |
+    | 这个控制器处理注册新用户和已存在用户的认证。
+    | 默认情况下，这个控制器使用一个简单的特征来添加这些行为。
+    | 为什么你不探索它呢？
+    |
+    */
+
+    use AuthenticatesAndRegistersUsers, ThrottlesLogins;
+
+    /**
+     * 用户登录或注册后重定向到哪里
+     *
+     * @var string
+     */
+    protected $redirectTo = 'admin';
+
+    /**
+     * 创建一个新的认证控制器实例
+     *
+     * @return void
+     */
+    public function __construct()
+    {
+        $this->middleware($this->guestMiddleware(), ['except' => 'logout']);
+    }
+
+    /**
+     * 为传入的注册请求获得一个验证器
+     *
+     * @param  array  $data
+     * @return \Illuminate\Contracts\Validation\Validator
+     */
+    protected function validator(array $data)
+    {
+        return Validator::make($data, [
+            'name' => 'required|max:255',
+            'email' => 'required|email|max:255|unique:users',
+            'password' => 'required|min:6|confirmed',
+        ]);
+    }
+
+    /**
+     * 在一个有效的注册后创建一个新的用户实例
+     *
+     * @param  array  $data
+     * @return User
+     */
+    protected function create(array $data)
+    {
+        return User::create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => bcrypt($data['password']),
+        ]);
+    }
+}
+```
 
 ### 构建 Article 后台管理功能
 
 #### 添加路由
 
+添加针对 `http://localhost/admin/article` 的路由
+
+`routes/web.php`
+
+```php
+Route::group(['middleware' => 'auth', 'namespace' => 'Admin', 'prefix' => 'admin'], function () {
+    Route::get('/', 'HomeController@index');
+    Route::get('article', 'ArticleController@index');
+//    Route::resource('article', 'ArticleController'); // 资源路由
+});
+```
+
 #### 新建控制器
+
+```php
+php artisan make:controller Admin/ArticleController
+```
+
+新增 `index` 方法
+
+`app/Http/Controllers/Admin/ArticleController.php`
+
+```php
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use Illuminate\Http\Request;
+
+use App\Http\Requests;
+use App\Http\Controllers\Controller;
+// Article 类和当前控制器不在一个命名空间路径下，不能直接调用
+use App\Article;
+
+class ArticleController extends Controller
+{
+    public function index()
+    {
+        return view('admin/article/index')->withArticles(Article::all());
+    }
+}
+```
 
 #### 新建视图
 
+`resources/views/admin/article/index.blade.php`
+
+```php
+@extends('layouts.app')
+
+@section('content')
+    <div class="container">
+        <div class="row">
+            <div class="col-md-10 col-md-offset-1">
+                <div class="panel panel-default">
+                    <div class="panel-heading">文章管理</div>
+                    <div class="panel-body">
+                        @if(count($errors) > 0)
+                            <div class="alert alert-danger">
+                                {!! implode('<br>', $errors->all()) !!}
+                            </div>
+                        @endif
+                        <a href="{{url('admin/article/create')}}" class="btn btn-lg btn-primary">新增</a>
+                        @foreach($articles as $article)
+                            <hr>
+                            <div class="article">
+                                <h4>{{$article->title}}</h4>
+                                <div class="content">
+                                    <p>
+                                        {{$article->body}}
+                                    </p>
+                                </div>
+                            </div>
+                            <a href="{{url('admin/article'.$article->id.'/edit')}}" class="btn btn-success">编辑</a>
+                            <form action="{{url('admin/article/').$article->id}}" method="post"
+                                  style="display: inline;">
+                                {{method_field("DELETE")}}
+                                {{csrf_field()}}
+                                <button type="submit" class="btn btn-danger">删除</button>
+                            </form>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+```
+
+## RESTful 资源控制器
+
+资源控制器是 Laravel 内部的一种功能强大的约定，它约定了一系列对某一种资源进行“增删改查”操作的路由配置，让我们不再需要对每一项需要管理的资源都写 N 行重复形式的路由。
+
+> ## [RESTful 资源控制器](http://laravel-china.org/docs/5.2/controllers#restful-resource-controllers)
+
+### 配置资源路由
+
+`routes/web.php`
+
+```php
+Route::group(['middleware' => 'auth', 'namespace' => 'Admin', 'prefix' => 'admin'], function () {
+    Route::get('/', 'HomeController@index');
+//    Route::get('article', 'ArticleController@index');
+    Route::resource('article', 'ArticleController'); // 资源路由
+});
+```
+
+### 新增 Article
+
+#### 获取“新增 Article ”的页面
+
+在 ArticleController 中新增 create 方法，返回一个可以输入文章的页面
+
+`app/Http/Controllers/Admin/ArticleController.php`
+
+```php
+    public function create()
+    {
+        return view('admin/article/create');
+    }
+```
+
+新增视图文件 `resources/views/admin/article/create.blade.php`
+
+```php
+@extends('layouts.app')
+
+@section('content')
+    <div class="container">
+        <div class="row">
+            <div class="col-md-10 col-md-offset-1">
+                <div class="panel panel-default">
+                    <div class="panel-heading">新增一篇文章</div>
+                    <div class="panel-body">
+
+                        @if (count($errors) > 0)
+                            <div class="alert alert-danger">
+                                <strong>新增失败</strong> 输入不符合要求<br><br>
+                                {!! implode('<br>', $errors->all()) !!}
+                            </div>
+                        @endif
+
+                        <form action="{{ url('admin/article') }}" method="POST">
+                            {!! csrf_field() !!}
+                            <input type="text" name="title" class="form-control" required="required"
+                                   placeholder="请输入标题">
+                            <br>
+                            <textarea name="body" rows="10" class="form-control" required="required"
+                                      placeholder="请输入内容"></textarea>
+                            <br>
+                            <button class="btn btn-lg btn-info">新增文章</button>
+                        </form>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+```
+
+视图调用 `return view('admin/article/create');` 返回了视图文件。
+
+`view()` 方法是 Laravel 中一个全局的方法，用于调用视图文件，接收一个字符串参数，并按照参数去调取对应的路由。
+
+#### 提交数据到后端
+
+视图 `resources/views/admin/article/create.blade.php` 中有一个表单。
+
+第一，表单的 `action` 。动态生成了一个 URL 作为 action ，并且指定了表单提交需要使用 POST 方法。
+
+第二， `csrf_field()` 。这是 Laravel 中内置的防止应对 CSRF 攻击的防范措施，任何 POST PUT PATCH 请求都会被检测是否提交了 CSRF 字段。
+
+```php
+{!! csrf_field() !!}
+```
+
+实际上会生成一个隐藏的 input ：
+
+```html
+<input type="hidden" name="_token" value="JXu9M89kBgMKkIMYBhFbJe1tv0RmO6D4UdxdKwq6">
+```
+
+也可以这样写：
+
+```html
+<input type="hidden" name="_token" value="{{ csrf_token() }}">
+```
+#### 后端接收数据
+
+新建 store 方法
+
+```php
+    public function store(Request $request)
+    {
+        // 数据验证
+        $this->validate($request, [
+            'title' => 'required|unique:articles|max:255',
+            'body' => 'required',
+        ]);
+
+        /* 通过Artiel Model插入一条数据进articles表 */
+        $article = new Article; // 初始化对象
+        // 通过表单提交的字段给对象的属性赋值
+        $article->title = $request->get('title');
+        $article->body = $request->get('body');
+        // 获取当前Auth系统中注册的用户，将id赋值给对象的相应属性
+        $article->user_id = $request->user()->id;
+
+        // 将数据保存到数据库，通过判断保存结果，控制页面进行不同跳转
+        if ($article->save()) {
+            // 保存成功，页面重定向到 文章管理页
+            return redirect('admin/article');
+        } else {
+            // 保存失败，页面重定向回去，保留用户输入并给出提示
+            return redirect()->back()->withInput()->withErrors('保存失败');
+        }
+    }
+```
+
+### 编辑 Article
+
+
+
+
+
+### 删除 Article
+
+删除某个资源跟新增、编辑相比，最大的不同就是运行方式的不同：删除按钮看起来是一个独立的按钮，其实它是一个完整的表单，只不过只有这一个按钮暴露在页面上：
+
+```html
+<form action="{{url('admin/article/').$article->id}}" method="post" style="display: inline;">
+    {{method_field("DELETE")}}
+    {{csrf_field()}}
+    <button type="submit" class="btn btn-danger">删除</button>
+</form>
+```
+
+`{{ method_field('DELETE') }}` 是 Laravel 特有的请求处理系统的特殊约定。
+
+Laravel 的请求处理系统要求所有非 GET 和 POST 的请求全部通过 POST 请求来执行，再将真正的方式使用 _method 表单字段携带给后端代码。 PUT / PATCH 请求也要通过 POST 来执行。
