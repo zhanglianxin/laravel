@@ -1589,3 +1589,308 @@ public function destroy($id) {
 }
 ```
 
+---
+
+## 开始构建评论系统
+
+### 基础规划
+
+需要新建一个表专门用来存放数据库，每条评论都属于某一篇文章。评论之间的层级关系比较复杂，本文为入门教程，将“回复别人的评论”暂定为简单的在评论内容前面增加 @john 这样的字符串。
+
+### 建立 Model 类和数据表
+
+创建名为 Comment 的 Model 类，并顺便创建附带的 migration ，在 laravel 目录下运行命令：
+
+```shell
+php artisan make:model Comment -m
+```
+
+`Model created successfully.`
+`Created Migration: 2016_09_11_012245_create_comments_table`
+
+这样一次性建立了 Comment 类和 `XXX_create_comments_table` 两个文件。
+
+修改 migration 文件的 up 方法为：
+
+```php
+public function up()
+{
+    Schema::create('comments', function (Blueprint $table) {
+        $table->increments('id');
+        $table->string('nickname');
+        $table->string('email')->nullable();
+        $table->string('website')->nullable();
+        $table->text('content')->nullable();
+        $table->integer('article_id');
+        $table->timestamps();
+    });
+}
+```
+
+运行命令创建数据库中对应的数据表。
+
+```shell
+php artisan migrate
+```
+
+### 建立“一对多关系”
+
+在 Article 模型中增加一对多关系的函数：
+
+`app/Article.php`
+
+```php
+<?php
+
+namespace App;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Article extends Model
+{
+    public function hasManyComments()
+    {
+        return $this->hasMany('App\Comment', 'article_id', 'id');
+    }
+}
+```
+
+> 模型间关系中文文档：[Eloquent：关联](http://laravel-china.org/docs/5.2/eloquent-relationships) 
+>
+> 扩展阅读：[深入理解 Laravel Eloquent（三）——模型间关系（关联）](https://lvwenhan.com/laravel/423.html)
+
+### 构建前台 UI
+
+修改前台的视图文件，把评论功能添加进去。
+
+#### 创建前台的 ArticleController 类
+
+运行命令：
+
+```shell
+php artisan make:controller ArticleController
+```
+
+增加路由：
+
+```php
+Route::get('article/{id}', 'ArticleController@show');
+```
+
+此处的 `{id}` 指代任意字符串，在本系统的规划中，此字段为文章 ID 为数字，但是本行路由却会尝试匹配所有的请求，*所以当你遇到了奇怪的路由调用的方法跟你想象的不一样时，记得检查路由顺序*。路由匹配方式为前置匹配：任何一条路由规则匹配成功，会立刻返回结果，后面的路由便没有了机会。
+
+给 ArticleController 增加 show 函数：
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Article;
+use Illuminate\Http\Request;
+
+use App\Http\Requests;
+
+class ArticleController extends Controller
+{
+    public function show($id)
+    {
+        return view('article/show')->withArticle(Article::with('hasManyComments')->find($id));
+    }
+}
+```
+
+#### 创建前台文章展示视图
+
+新建 `resources/views/article/show.balde.php` 文件：
+
+```php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Learn Laravel 5</title>
+
+    <link href="//cdn.bootcss.com/bootstrap/3.2.0/css/bootstrap.min.css" rel="stylesheet">
+    <script src="//cdn.bootcss.com/jquery/1.11.1/jquery.min.js"></script>
+    <script src="//cdn.bootcss.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+</head>
+
+<div id="content" style="padding: 50px;">
+
+    <h4>
+        <a href="/"><< 返回首页</a>
+    </h4>
+
+    <h1 style="text-align: center; margin-top: 50px;">{{ $article->title }}</h1>
+    <hr>
+    <div id="date" style="text-align: right;">
+        {{ $article->updated_at }}
+    </div>
+    <div id="content" style="margin: 20px;">
+        <p>
+            {{ $article->body }}
+        </p>
+    </div>
+
+    <div id="comments" style="margin-top: 50px;">
+
+        @if (count($errors) > 0)
+            <div class="alert alert-danger">
+                <strong>操作失败</strong> 输入不符合要求<br><br>
+                {!! implode('<br>', $errors->all()) !!}
+            </div>
+        @endif
+
+        <div id="new">
+            <form action="{{ url('comment') }}" method="POST">
+                {!! csrf_field() !!}
+                <input type="hidden" name="article_id" value="{{ $article->id }}">
+                <div class="form-group">
+                    <label>Nickname</label>
+                    <input type="text" name="nickname" class="form-control" style="width: 300px;" required="required">
+                </div>
+                <div class="form-group">
+                    <label>Email address</label>
+                    <input type="email" name="email" class="form-control" style="width: 300px;">
+                </div>
+                <div class="form-group">
+                    <label>Home page</label>
+                    <input type="text" name="website" class="form-control" style="width: 300px;">
+                </div>
+                <div class="form-group">
+                    <label>Content</label>
+                    <textarea name="content" id="newFormContent" class="form-control" rows="10"
+                              required="required"></textarea>
+                </div>
+                <button type="submit" class="btn btn-lg btn-success col-lg-12">Submit</button>
+            </form>
+        </div>
+
+        <script>
+            function reply(a) {
+                var nickname = a.parentNode.parentNode.firstChild.nextSibling.getAttribute('data');
+                var textArea = document.getElementById('newFormContent');
+                textArea.innerHTML = '@' + nickname + ' ';
+            }
+        </script>
+
+        <div class="conmments" style="margin-top: 100px;">
+            @foreach ($article->hasManyComments as $comment)
+
+                <div class="one" style="border-top: solid 20px #efefef; padding: 5px 20px;">
+                    <div class="nickname" data="{{ $comment->nickname }}">
+                        @if ($comment->website)
+                            <a href="{{ $comment->website }}">
+                                <h3>{{ $comment->nickname }}</h3>
+                            </a>
+                        @else
+                            <h3>{{ $comment->nickname }}</h3>
+                        @endif
+                        <h6>{{ $comment->created_at }}</h6>
+                    </div>
+                    <div class="content">
+                        <p style="padding: 20px;">
+                            {{ $comment->content }}
+                        </p>
+                    </div>
+                    <div class="reply" style="text-align: right; padding: 5px;">
+                        <a href="#new" onclick="reply(this);">回复</a>
+                    </div>
+                </div>
+
+            @endforeach
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
+```
+
+### 构建评论存储功能
+
+创建一个 CommentController 控制器，并增加一条“存储评论”的路由。
+
+运行命令：
+
+```shell
+php artisan make:controller CommentController
+```
+
+控制器创建成功，增加一条路由：
+
+```php
+Route::post('comment', 'CommentController@store');
+```
+
+给控制器类增加 store 函数：
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Comment;
+use Illuminate\Http\Request;
+
+use App\Http\Requests;
+
+class CommentController extends Controller
+{
+    public function store(Request $request)
+    {
+        if (Comment::create($request->all())) {
+            // 评论成功，页面重定向返回
+            return redirect()->back();
+        } else {
+            // 评论失败，页面重定向回去，保留用户输入并给出提示
+            return redirect()->back() - withInput()->withErrors('评论发表失败！');
+        }
+    }
+}
+```
+
+#### 批量赋值
+
+采用批量赋值方法来减少存储评论的代码。
+
+另参见：[批量赋值](http://laravel-china.org/docs/5.2/eloquent#批量赋值)
+
+给 Comment 类增加 $fillable 成员变量：
+
+`app/Comment.php`
+
+```php
+<?php
+
+namespace App;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Comment extends Model
+{
+    protected $fillable = ['nickname', 'email', 'website', 'content', 'article_id'];
+}
+```
+
+前台评论功能构建完成。
+
+## 构建后台评论管理功能
+
+页面效果如下：
+
+**管理评论**
+
+![管理评论](http://7xlmi4.dl1.z0.glb.clouddn.com/2016-06-03-14649668823242.jpg)
+
+**编辑评论**
+
+![编辑评论](http://7xlmi4.dl1.z0.glb.clouddn.com/2016-06-03-14649668944304.jpg)
+
+
+

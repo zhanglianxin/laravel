@@ -6,9 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class Article extends Model
 {
+    public function hasManyComments()
+    {
+        return $this->hasMany('App\Comment', 'article_id', 'id');
+    }
 }
-
-/*$articles = Article::all();
-foreach ($articles as $article) {
-    echo $article->title;
-}*/
