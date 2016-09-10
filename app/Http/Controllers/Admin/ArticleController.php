@@ -22,9 +22,9 @@ class ArticleController extends Controller
     }
 
     public function edit($id) {
-        // 带数据返回该视图
-        return view('admin/article/edit')->withArticle(Article::find($id));
-    }
+    // 带数据返回该视图
+    return view('admin/article/edit')->withArticle(Article::find($id));
+}
 
     public function store(Request $request)
     {

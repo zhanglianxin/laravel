@@ -1313,8 +1313,8 @@ class ArticleController extends Controller
                                     </p>
                                 </div>
                             </div>
-                            <a href="{{url('admin/article'.$article->id.'/edit')}}" class="btn btn-success">编辑</a>
-                            <form action="{{url('admin/article/').$article->id}}" method="post"
+                            <a href="{{url('admin/article/'.$article->id.'/edit')}}" class="btn btn-success">编辑</a>
+                            <form action="{{url('admin/article/'.$article->id)}}" method="post"
                                   style="display: inline;">
                                 {{method_field("DELETE")}}
                                 {{csrf_field()}}
@@ -1428,6 +1428,8 @@ Route::group(['middleware' => 'auth', 'namespace' => 'Admin', 'prefix' => 'admin
 ```html
 <input type="hidden" name="_token" value="{{ csrf_token() }}">
 ```
+如果你的系统有很多 Ajax ，而你又不想降低安全性，这里的 `csrf_token()` 函数将会给你巨大的帮助。
+
 #### 后端接收数据
 
 新建 store 方法
@@ -1462,9 +1464,93 @@ Route::group(['middleware' => 'auth', 'namespace' => 'Admin', 'prefix' => 'admin
 
 ### 编辑 Article
 
+#### 获取“编辑 Article ”的页面
 
+在 ArticleController 中新增 edit 方法，返回一个可以编辑文章的页面
 
+`app/Http/Controllers/Admin/ArticleController.php`
 
+```php
+public function edit($id) {
+    // 带数据返回该视图
+    return view('admin/article/edit')->withArticle(Article::find($id));
+}
+```
+
+新增视图文件 `resources/views/admin/article/edit.blade.php`
+
+```php
+@extends('layouts.app')
+
+@section('content')
+    <div class="container">
+        <div class="row">
+            <div class="col-md-10 col-md-offset-1">
+                <div class="panel panel-default">
+                    <div class="panel-heading">编辑文章</div>
+                    <div class="panel-body">
+
+                        @if (count($errors) > 0)
+                            <div class="alert alert-danger">
+                                <strong>编辑失败</strong> 输入不符合要求<br><br>
+                                {!! implode('<br>', $errors->all()) !!}
+                            </div>
+                        @endif
+
+                        <form action="{{ url('admin/article/'.$article->id) }}" method="POST">
+                            {{ method_field('PATCH') }}
+                            {{ csrf_field() }}
+                            <input type="text" name="title" class="form-control" required="required" placeholder="请输入标题"
+                                   value="{{ $article->title }}">
+                            <br>
+                            <textarea name="body" rows="10" class="form-control" required="required"
+                                      placeholder="请输入内容">{{ $article->body }}</textarea>
+                            <br>
+                            <button class="btn btn-lg btn-info">提交修改</button>
+                        </form>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+@endsection
+```
+
+视图调用 `return view('admin/article/edit')->withArticle(Article::find($id));` 返回了视图文件。
+
+#### 提交数据到后端
+
+视图 `resources/views/admin/article/edit.blade.php` 中有一个表单，动态生成了一个 URL 作为 action ，并且指定了表单提交需要使用 POST 方法。
+
+#### 后端接收数据
+
+新建 update 方法
+
+```php
+public function update(Request $request, $id) {
+    // 数据验证
+    $this->validate($request, [
+        'title' => 'required|unique:articles|max:255',
+        'body' => 'required',
+    ]);
+
+    /* 通过Artiel Model修改一条articles表中已有的数据 */
+    $article = Article::find($id); // 从数据库中取出该对象
+    // 通过表单提交的字段给对象的属性赋值
+    $article->title = $request->get('title');
+    $article->body = $request->get('body');
+
+    // 将数据保存到数据库，通过判断保存结果，控制页面进行不同跳转
+    if ($article->save()) {
+        // 保存成功，页面重定向到 文章管理页
+        return redirect('admin/article');
+    } else {
+        // 保存失败，页面重定向回去，保留用户输入并给出提示
+        return redirect()->back()->withInput()->withErrors('更新失败');
+    }
+}
+```
 
 ### 删除 Article
 
@@ -1481,3 +1567,25 @@ Route::group(['middleware' => 'auth', 'namespace' => 'Admin', 'prefix' => 'admin
 `{{ method_field('DELETE') }}` 是 Laravel 特有的请求处理系统的特殊约定。
 
 Laravel 的请求处理系统要求所有非 GET 和 POST 的请求全部通过 POST 请求来执行，再将真正的方式使用 _method 表单字段携带给后端代码。 PUT / PATCH 请求也要通过 POST 来执行。
+
+另外， PUT / PATCH 请求通过 POST 方法执行仅限于 form 提交，对 Ajax 请求目前来看是无效的。
+
+在控制器中增加删除文章对应的是 `destroy` 方法：
+
+```php
+public function destroy($id) {
+    /* 通过Artiel Model删除一条articles表中已有的数据 */
+    $article = Article::find($id);
+
+    // 将数据从数据库中删除，通过判断删除结果，控制页面进行不同跳转
+    $msg = '';
+    if ($article->delete()) {
+        $msg = '删除成功';
+    } else {
+        $msg = '删除失败';
+    }
+    
+    return redirect()->back()->withInput()->withErrors($msg);
+}
+```
+
