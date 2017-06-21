@@ -1,1 +1,1 @@
-Please refer to this ([leanlaravel5](https://git.oschina.net/Coolman/learnlaravel5)) repo.
+Please refer to this ([leanlaravel5](https://github.com/zhanglianxin/learnlaravel5)) repo.
